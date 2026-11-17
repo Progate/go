@@ -92,17 +92,28 @@ func notetsleepg(n *note, ns int64) bool {
 		throw("notetsleepg on g0")
 	}
 
+	// Sleep on a timer between checks, as time.Sleep does, rather than
+	// yielding in a loop: with a goroutine always runnable (this one), the
+	// scheduler never gets to block in the network poller, so goroutines
+	// waiting on I/O would starve. os/signal waits here for a signal.
 	deadline := nanotime() + ns
+	delay := int64(100_000) // 100µs
 	for {
 		if n.key != 0 {
 			return true
 		}
-		if sched_yield() != 0 {
-			throw("sched_yield failed")
+		if ns >= 0 {
+			left := deadline - nanotime()
+			if left <= 0 {
+				return false
+			}
+			if delay > left {
+				delay = left
+			}
 		}
-		Gosched()
-		if ns >= 0 && nanotime() >= deadline {
-			return false
+		timeSleep(delay)
+		if delay < 20_000_000 { // 20ms
+			delay *= 2
 		}
 	}
 }
