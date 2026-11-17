@@ -149,7 +149,6 @@ func Pipe2(p []int, flags int) error {
 	return err
 }
 
-//sys	ppoll(fds *PollFd, nfds int, timeout *Timespec, sigmask *Sigset_t) (n int, err error)
 
 func Ppoll(fds []PollFd, timeout *Timespec, sigmask *Sigset_t) (n int, err error) {
 	if len(fds) == 0 {
@@ -214,7 +213,6 @@ func Utimes(path string, tv []Timeval) error {
 	return utimes(path, (*[2]Timeval)(unsafe.Pointer(&tv[0])))
 }
 
-//sys	utimensat(dirfd int, path string, times *[2]Timespec, flags int) (err error)
 
 func UtimesNano(path string, ts []Timespec) error {
 	return UtimesNanoAt(AT_FDCWD, path, ts, 0)
@@ -1546,7 +1544,7 @@ func KeyctlRestrictKeyring(ringid int, keyType string, restriction string) error
 
 func recvmsgRaw(fd int, iov []Iovec, oob []byte, flags int, rsa *RawSockaddrAny) (n, oobn int, recvflags int, err error) {
 	var msg Msghdr
-	msg.Name = (*byte)(unsafe.Pointer(rsa))
+	msg.setName(unsafe.Pointer(rsa))
 	msg.Namelen = uint32(SizeofSockaddrAny)
 	var dummy byte
 	if len(oob) > 0 {
@@ -1559,16 +1557,16 @@ func recvmsgRaw(fd int, iov []Iovec, oob []byte, flags int, rsa *RawSockaddrAny)
 			// receive at least one normal byte
 			if sockType != SOCK_DGRAM {
 				var iova [1]Iovec
-				iova[0].Base = &dummy
+				iova[0].setBase(&dummy)
 				iova[0].SetLen(1)
 				iov = iova[:]
 			}
 		}
-		msg.Control = &oob[0]
+		msg.setControl(&oob[0])
 		msg.SetControllen(len(oob))
 	}
 	if len(iov) > 0 {
-		msg.Iov = &iov[0]
+		msg.setIov(&iov[0])
 		msg.SetIovlen(len(iov))
 	}
 	if n, err = recvmsg(fd, &msg, flags); err != nil {
@@ -1581,7 +1579,7 @@ func recvmsgRaw(fd int, iov []Iovec, oob []byte, flags int, rsa *RawSockaddrAny)
 
 func sendmsgN(fd int, iov []Iovec, oob []byte, ptr unsafe.Pointer, salen _Socklen, flags int) (n int, err error) {
 	var msg Msghdr
-	msg.Name = (*byte)(ptr)
+	msg.setName(ptr)
 	msg.Namelen = uint32(salen)
 	var dummy byte
 	var empty bool
@@ -1596,16 +1594,16 @@ func sendmsgN(fd int, iov []Iovec, oob []byte, ptr unsafe.Pointer, salen _Sockle
 			// send at least one normal byte
 			if sockType != SOCK_DGRAM {
 				var iova [1]Iovec
-				iova[0].Base = &dummy
+				iova[0].setBase(&dummy)
 				iova[0].SetLen(1)
 				iov = iova[:]
 			}
 		}
-		msg.Control = &oob[0]
+		msg.setControl(&oob[0])
 		msg.SetControllen(len(oob))
 	}
 	if len(iov) > 0 {
-		msg.Iov = &iov[0]
+		msg.setIov(&iov[0])
 		msg.SetIovlen(len(iov))
 	}
 	if n, err = sendmsg(fd, &msg, flags); err != nil {
@@ -1747,14 +1745,14 @@ const elfNT_PRSTATUS = 1
 
 func PtraceGetRegs(pid int, regsout *PtraceRegs) (err error) {
 	var iov Iovec
-	iov.Base = (*byte)(unsafe.Pointer(regsout))
+	iov.setBase((*byte)(unsafe.Pointer(regsout)))
 	iov.SetLen(int(unsafe.Sizeof(*regsout)))
 	return ptracePtr(PTRACE_GETREGSET, pid, uintptr(elfNT_PRSTATUS), unsafe.Pointer(&iov))
 }
 
 func PtraceSetRegs(pid int, regs *PtraceRegs) (err error) {
 	var iov Iovec
-	iov.Base = (*byte)(unsafe.Pointer(regs))
+	iov.setBase((*byte)(unsafe.Pointer(regs)))
 	iov.SetLen(int(unsafe.Sizeof(*regs)))
 	return ptracePtr(PTRACE_SETREGSET, pid, uintptr(elfNT_PRSTATUS), unsafe.Pointer(&iov))
 }
@@ -1851,16 +1849,10 @@ func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err e
  */
 //sys	Acct(path string) (err error)
 //sys	AddKey(keyType string, description string, payload []byte, ringid int) (id int, err error)
-//sys	Adjtimex(buf *Timex) (state int, err error)
 //sysnb	Capget(hdr *CapUserHeader, data *CapUserData) (err error)
 //sysnb	Capset(hdr *CapUserHeader, data *CapUserData) (err error)
 //sys	Chdir(path string) (err error)
 //sys	Chroot(path string) (err error)
-//sys	ClockAdjtime(clockid int32, buf *Timex) (state int, err error)
-//sys	ClockGetres(clockid int32, res *Timespec) (err error)
-//sys	ClockGettime(clockid int32, time *Timespec) (err error)
-//sys	ClockSettime(clockid int32, time *Timespec) (err error)
-//sys	ClockNanosleep(clockid int32, flags int, request *Timespec, remain *Timespec) (err error)
 //sys	Close(fd int) (err error)
 //sys	CloseRange(first uint, last uint, flags uint) (err error)
 //sys	CopyFileRange(rfd int, roff *int64, wfd int, woff *int64, len int, flags int) (n int, err error)
@@ -2040,12 +2032,10 @@ func Getrandom(buf []byte, flags int) (n int, err error) {
 //sys	Mkdirat(dirfd int, path string, mode uint32) (err error)
 //sys	Mknodat(dirfd int, path string, mode uint32, dev int) (err error)
 //sys	MoveMount(fromDirfd int, fromPathName string, toDirfd int, toPathName string, flags int) (err error)
-//sys	Nanosleep(time *Timespec, leftover *Timespec) (err error)
 //sys	OpenTree(dfd int, fileName string, flags uint) (r int, err error)
 //sys	PerfEventOpen(attr *PerfEventAttr, pid int, cpu int, groupFd int, flags int) (fd int, err error)
 //sys	PivotRoot(newroot string, putold string) (err error) = SYS_PIVOT_ROOT
 //sys	Prctl(option int, arg2 uintptr, arg3 uintptr, arg4 uintptr, arg5 uintptr) (err error)
-//sys	pselect6(nfd int, r *FdSet, w *FdSet, e *FdSet, timeout *Timespec, sigmask *sigset_argpack) (n int, err error)
 //sys	read(fd int, p []byte) (n int, err error)
 //sys	Removexattr(path string, attr string) (err error)
 //sys	Renameat2(olddirfd int, oldpath string, newdirfd int, newpath string, flags uint) (err error)
@@ -2054,7 +2044,6 @@ func Getrandom(buf []byte, flags int) (n int, err error) {
 //sys	Sethostname(p []byte) (err error)
 //sysnb	Setpgid(pid int, pgid int) (err error)
 //sysnb	Setsid() (pid int, err error)
-//sysnb	Settimeofday(tv *Timeval) (err error)
 //sys	Setns(fd int, nstype int) (err error)
 
 //go:linkname syscall_prlimit syscall.prlimit
@@ -2138,8 +2127,6 @@ func Signalfd(fd int, sigmask *Sigset_t, flags int) (newfd int, err error) {
 //sysnb	Sysinfo(info *Sysinfo_t) (err error)
 //sys	Tee(rfd int, wfd int, len int, flags int) (n int64, err error)
 //sysnb	TimerfdCreate(clockid int, flags int) (fd int, err error)
-//sysnb	TimerfdGettime(fd int, currValue *ItimerSpec) (err error)
-//sysnb	TimerfdSettime(fd int, flags int, newValue *ItimerSpec, oldValue *ItimerSpec) (err error)
 //sysnb	Tgkill(tgid int, tid int, sig syscall.Signal) (err error)
 //sysnb	Times(tms *Tms) (ticks uintptr, err error)
 //sysnb	Umask(mask int) (oldmask int)
@@ -2501,39 +2488,6 @@ func Getresgid() (rgid, egid, sgid int) {
 	var r, e, s _C_int
 	getresgid(&r, &e, &s)
 	return int(r), int(e), int(s)
-}
-
-// Pselect is a wrapper around the Linux pselect6 system call.
-// This version does not modify the timeout argument.
-func Pselect(nfd int, r *FdSet, w *FdSet, e *FdSet, timeout *Timespec, sigmask *Sigset_t) (n int, err error) {
-	// Per https://man7.org/linux/man-pages/man2/select.2.html#NOTES,
-	// The Linux pselect6() system call modifies its timeout argument.
-	// [Not modifying the argument] is the behavior required by POSIX.1-2001.
-	var mutableTimeout *Timespec
-	if timeout != nil {
-		mutableTimeout = new(Timespec)
-		*mutableTimeout = *timeout
-	}
-
-	// The final argument of the pselect6() system call is not a
-	// sigset_t * pointer, but is instead a structure
-	var kernelMask *sigset_argpack
-	if sigmask != nil {
-		wordBits := 32 << (^uintptr(0) >> 63) // see math.intSize
-
-		// A sigset stores one bit per signal,
-		// offset by 1 (because signal 0 does not exist).
-		// So the number of words needed is ⌈__C_NSIG - 1 / wordBits⌉.
-		sigsetWords := (_C__NSIG - 1 + wordBits - 1) / (wordBits)
-
-		sigsetBytes := uintptr(sigsetWords * (wordBits / 8))
-		kernelMask = &sigset_argpack{
-			ss:    sigmask,
-			ssLen: sigsetBytes,
-		}
-	}
-
-	return pselect6(nfd, r, w, e, mutableTimeout, kernelMask)
 }
 
 //sys	schedSetattr(pid int, attr *SchedAttr, flags uint) (err error)

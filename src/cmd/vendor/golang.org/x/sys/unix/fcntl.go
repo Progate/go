@@ -9,8 +9,9 @@ package unix
 import "unsafe"
 
 // fcntl64Syscall is usually SYS_FCNTL, but is overridden on 32-bit Linux
-// systems by fcntl_linux_32bit.go to be SYS_FCNTL64.
-var fcntl64Syscall uintptr = SYS_FCNTL
+// systems by fcntl_linux_32bit.go to be SYS_FCNTL64. linux/wasm has only
+// SYS_FCNTL64 (see sysFcntl).
+var fcntl64Syscall uintptr = sysFcntl
 
 func fcntl(fd int, cmd, arg int) (int, error) {
 	valptr, _, errno := Syscall(fcntl64Syscall, uintptr(fd), uintptr(cmd), uintptr(arg))
