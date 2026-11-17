@@ -8,6 +8,7 @@ package syscall
 
 import (
 	errpkg "errors"
+	"internal/goarch"
 	"internal/strconv"
 	"unsafe"
 )
@@ -335,7 +336,9 @@ func os_checkClonePidfd() error {
 	// ideal. The structures are copied (mostly) verbatim from syscall/unix,
 	// which we obviously cannot import because of an import loop.
 
-	const is64bit = ^uint(0) >> 63 // 0 for 32-bit hosts, 1 for 64-bit ones.
+	// 0 for 32-bit hosts, 1 for 64-bit ones. linux/wasm has the 32-bit ABI
+	// of riscv32, although a Go word is 64 bits on wasm.
+	const is64bit = (^uint(0) >> 63) &^ goarch.IsWasm
 	type sigInfo struct {
 		Signo int32
 		_     struct {

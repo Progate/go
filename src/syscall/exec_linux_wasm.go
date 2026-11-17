@@ -20,11 +20,15 @@ import (
 // the child's pid to the parent.
 //
 // So the code a vfork child runs is a function here, vforkChild, which the
-// parent sets right before calling clone.
+// parent sets right before calling clone. It runs on the parent's goroutine
+// stack below the clone call, after runtime_BeforeFork, so like the child
+// part of forkAndExecInChild1 on the other ports it must not grow the stack:
+// everything it calls is nosplit.
 
 var vforkChild func()
 
 //go:wasmexport __browseros_clone_child_return
+//go:nosplit
 func cloneChildReturn() {
 	if f := vforkChild; f != nil {
 		f()
@@ -142,6 +146,7 @@ func forkAndExecInChild1(argv0 *byte, argv, envv []*byte, chroot, dir *byte, att
 // runForkChild is the vfork child of forkAndExecInChild1: the child part of
 // forkAndExecInChild1 on the other ports.
 //
+//go:nosplit
 //go:norace
 //go:nocheckptr
 func runForkChild() {
@@ -428,6 +433,7 @@ func doCheckClonePidfd(pidfd *int32) (pid uintptr, errno Errno) {
 	return
 }
 
+//go:nosplit
 func exitCheckChild() {
 	RawSyscall(SYS_EXIT_GROUP, 0, 0, 0)
 }
