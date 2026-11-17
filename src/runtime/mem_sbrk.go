@@ -287,10 +287,29 @@ func sysReserveAlignedSbrk(size, align uintptr) (unsafe.Pointer, uintptr) {
 		}
 
 		// Round up bloc to align, then allocate size.
-		p = alignUp(bloc, align)
-		r := sbrk(p + size - bloc)
+		start := bloc
+		p = alignUp(start, align)
+		r := sbrk(p + size - start)
 		if r == nil {
 			p, size = 0, 0
+		} else if uintptr(r) != start {
+			// sbrk could not extend the break and took a new region
+			// elsewhere (linux/wasm, when a mapping follows the break;
+			// see mem_linux_wasm.go). Give it back and take one big
+			// enough to align in.
+			memFree(r, p+size-start)
+			if r = sbrk(size + align); r == nil {
+				p, size = 0, 0
+			} else {
+				p = alignUp(uintptr(r), align)
+				if l := p - uintptr(r); l > 0 {
+					memFree(r, l)
+				}
+				if l := uintptr(r) + size + align - (p + size); l > 0 {
+					memFree(unsafe.Pointer(p+size), l)
+				}
+				memCheck()
+			}
 		} else if l := p - uintptr(r); l > 0 {
 			// Free the area we skipped over for alignment.
 			memFree(r, l)
