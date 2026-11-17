@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -156,6 +158,10 @@ func (b *Builder) toolID(name string) string {
 			desc = VetTool
 		}
 
+		if id, ok := releaseToolID(name, path); ok {
+			return id
+		}
+
 		cmdline := str.StringList(cfg.BuildToolexec, path, "-V=full")
 		cmd := exec.Command(cmdline[0], cmdline[1:]...)
 		var stdout, stderr strings.Builder
@@ -181,6 +187,39 @@ func (b *Builder) toolID(name string) string {
 		// Use the whole line.
 		return strings.TrimSpace(line)
 	})
+}
+
+// releaseToolID returns, without running the tool, the line that a tool of
+// this release in GOROOT prints for -V=full, which toolID uses as its ID.
+// A tool of a release prints "<name> version <version>[ X:<experiments>]"
+// (see cmd/internal/objabi.AddVersionFlag).
+//
+// It is used on wasm only, where starting a process costs a fresh
+// WebAssembly instance (BrowserOS), and only for the standard tools of a
+// release toolchain run without -toolexec, where the line is known.
+func releaseToolID(name, path string) (string, bool) {
+	if runtime.GOARCH != "wasm" || len(cfg.BuildToolexec) > 0 || name == "vet" && path != base.Tool("vet") {
+		return "", false
+	}
+	version := runtime.Version()
+	if strings.Contains(version, "devel") || path != base.Tool(name) {
+		return "", false
+	}
+	// The tools must be those of this go command's release.
+	data, err := os.ReadFile(filepath.Join(cfg.GOROOT, "VERSION"))
+	if err != nil {
+		return "", false
+	}
+	if first, _, _ := strings.Cut(string(data), "\n"); first != version {
+		return "", false
+	}
+	line := name + " version " + version
+	if cfg.ExperimentErr == nil {
+		if experiments := cfg.Experiment.String(); experiments != "" {
+			line += " X:" + experiments
+		}
+	}
+	return line, true
 }
 
 // gccToolID returns the unique ID to use for a tool that is invoked
