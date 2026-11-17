@@ -70,6 +70,7 @@ var wasmFuncTypes = map[string]*wasmFuncType{
 	"_rt0_wasm_js":            {Params: []byte{}},                                         //
 	"_rt0_wasm_wasip1":        {Params: []byte{}},                                         //
 	"_rt0_wasm_wasip1_lib":    {Params: []byte{}},                                         //
+	"_rt0_wasm_linux":         {Params: []byte{}},                                         //
 	"wasm_export__start":      {},                                                         //
 	"wasm_export_run":         {Params: []byte{I32, I32}},                                 // argc, argv
 	"wasm_export_resume":      {Params: []byte{}},                                         //
@@ -250,7 +251,7 @@ func asmb2(ctxt *ld.Link, ldr *loader.Loader) {
 	writeFunctionSec(ctxt, fns)
 	writeTableSec(ctxt, fns)
 	writeMemorySec(ctxt, ldr)
-	writeGlobalSec(ctxt)
+	writeGlobalSec(ctxt, ldr)
 	writeExportSec(ctxt, ldr, len(hostImports))
 	writeElementSec(ctxt, uint64(len(hostImports)), uint64(len(fns)))
 	writeCodeSec(ctxt, fns)
@@ -380,7 +381,7 @@ func writeMemorySec(ctxt *ld.Link, ldr *loader.Loader) {
 }
 
 // writeGlobalSec writes the section that declares global variables.
-func writeGlobalSec(ctxt *ld.Link) {
+func writeGlobalSec(ctxt *ld.Link, ldr *loader.Loader) {
 	sizeOffset := writeSecHeader(ctxt, sectionGlobal)
 
 	globalRegs := []byte{
@@ -396,12 +397,28 @@ func writeGlobalSec(ctxt *ld.Link) {
 
 	writeUleb128(ctxt.Out, uint64(len(globalRegs))) // number of globals
 
-	for _, typ := range globalRegs {
+	// On Linux, SP is the initial stack pointer of the process (see
+	// writeExportSec): the kernel lays argc, argv, envp and auxv out below
+	// the top of runtime.startStack and moves SP down to them.
+	var initialSP int32
+	if buildcfg.GOOS == "linux" {
+		s := ldr.Lookup("runtime.startStack", 0)
+		if s == 0 {
+			ld.Errorf("runtime.startStack not defined")
+		}
+		initialSP = int32(ldr.SymValue(s)+ldr.SymSize(s)) &^ 15
+	}
+
+	for i, typ := range globalRegs {
 		ctxt.Out.WriteByte(typ)
 		ctxt.Out.WriteByte(0x01) // var
 		switch typ {
 		case I32:
-			writeI32Const(ctxt.Out, 0)
+			if i == 0 {
+				writeI32Const(ctxt.Out, initialSP)
+			} else {
+				writeI32Const(ctxt.Out, 0)
+			}
 		case I64:
 			writeI64Const(ctxt.Out, 0)
 		}
@@ -446,6 +463,31 @@ func writeExportSec(ctxt *ld.Link, ldr *loader.Loader, lenHostImports int) {
 		writeName(ctxt.Out, "memory") // memory in wasi
 		ctxt.Out.WriteByte(0x02)      // mem export
 		writeUleb128(ctxt.Out, 0)     // memidx
+	case "linux":
+		// A Linux program: _start, the memory and the stack pointer, which
+		// the kernel sets to the start block of execve(2) (see
+		// runtime/rt0_linux_wasm.s).
+		writeUleb128(ctxt.Out, uint64(3+len(ldr.WasmExports))) // number of exports
+		s := ldr.Lookup("_rt0_wasm_linux", 0)
+		if s == 0 {
+			ld.Errorf("export symbol _rt0_wasm_linux not defined")
+		}
+		idx := uint32(lenHostImports) + uint32(ldr.SymValue(s)>>16) - funcValueOffset
+		writeName(ctxt.Out, "_start")
+		ctxt.Out.WriteByte(0x00)            // func export
+		writeUleb128(ctxt.Out, uint64(idx)) // funcidx
+		for _, s := range ldr.WasmExports {
+			idx := uint32(lenHostImports) + uint32(ldr.SymValue(s)>>16) - funcValueOffset
+			writeName(ctxt.Out, ldr.SymName(s))
+			ctxt.Out.WriteByte(0x00)            // func export
+			writeUleb128(ctxt.Out, uint64(idx)) // funcidx
+		}
+		writeName(ctxt.Out, "memory")
+		ctxt.Out.WriteByte(0x02)  // mem export
+		writeUleb128(ctxt.Out, 0) // memidx
+		writeName(ctxt.Out, "__stack_pointer")
+		ctxt.Out.WriteByte(0x03)  // global export
+		writeUleb128(ctxt.Out, 0) // globalidx of SP
 	case "js":
 		writeUleb128(ctxt.Out, uint64(4+len(ldr.WasmExports))) // number of exports
 		for _, name := range []string{"run", "resume", "getsp"} {

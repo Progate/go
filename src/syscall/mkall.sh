@@ -270,6 +270,15 @@ linux_riscv64)
 	mksysnum="./mksysnum_linux.pl $unistd_h"
 	mktypes="GOARCH=$GOARCH go tool cgo -godefs"
 	;;
+linux_wasm)
+	# riscv32 Linux, the ABI of the linux/wasm kernel. zerrors, zsysnum and
+	# ztypes are derived from linux_riscv64 by hand (see their headers).
+	# The //sys lines of syscall_linux.go for the calls riscv32 has only as a
+	# _time64 or 64-bit variant are left out; syscall_linux_wasm.go has those.
+	mkerrors=
+	mksyscall="./mksyscall.pl -l32"
+	syscall_linux_omit='/^\/\/sys(nb)?[[:space:]]+(utimensat|fcntl|Nanosleep|Settimeofday|Adjtimex)\(/d'
+	;;
 linux_s390x)
 	GOOSARCH_in=syscall_linux_s390x.go
 	unistd_h=/usr/include/asm/unistd.h
@@ -399,7 +408,12 @@ esac
 		syscall_goos="syscall_bsd.go $syscall_goos"
  		;;
  	esac
+	if [ -n "$syscall_linux_omit" ]; then
+		echo "sed -E '$syscall_linux_omit' syscall_linux.go >_syscall_linux.go"
+		syscall_goos="_syscall_linux.go"
+	fi
 	if [ -n "$mksyscall" ]; then echo "$mksyscall -tags $GOOS,$GOARCH $syscall_goos $GOOSARCH_in |gofmt >zsyscall_$GOOSARCH.go"; fi
+	if [ -n "$syscall_linux_omit" ]; then echo "rm _syscall_linux.go"; fi
 	if [ -n "$mksysctl" ]; then echo "$mksysctl |gofmt >$zsysctl"; fi
 	if [ -n "$mksysnum" ]; then echo "$mksysnum |gofmt >zsysnum_$GOOSARCH.go"; fi
 	if [ -n "$mktypes" ]; then

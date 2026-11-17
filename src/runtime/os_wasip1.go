@@ -73,6 +73,9 @@ func environ_sizes_get(environCount, environBufLen *size) errno
 //go:noescape
 func fd_write(fd int32, iovs unsafe.Pointer, iovsLen size, nwritten *size) errno
 
+//go:wasmimport wasi_snapshot_preview1 sched_yield
+func sched_yield() errno
+
 //go:wasmimport wasi_snapshot_preview1 random_get
 //go:noescape
 func random_get(buf *byte, bufLen size) errno

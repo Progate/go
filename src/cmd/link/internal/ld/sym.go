@@ -71,6 +71,10 @@ func linknew(arch *sys.Arch) *Link {
 // computeTLSOffset records the thread-local storage offset.
 // Not used for Android where the TLS offset is determined at runtime.
 func (ctxt *Link) computeTLSOffset() {
+	if ctxt.Arch.Family == sys.Wasm {
+		// Wasm has no thread-local storage.
+		return
+	}
 	switch ctxt.HeadType {
 	default:
 		log.Fatalf("unknown thread-local storage offset for %v", ctxt.HeadType)
